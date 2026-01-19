@@ -1,0 +1,49 @@
+<nav class="navbar navbar-expand-lg navbar-light bg-light shadow-sm">
+    <div class="container">
+        <!-- Brand / Home -->
+        <a class="navbar-brand fw-bold fs-4"
+           href="{% if user.is_authenticated %}{% url 'trips-page' %}{% else %}{% url 'welcome-page' %}{% endif %}">
+            Bus Reservation
+        </a>
+
+        <!-- Toggle button for mobile -->
+        <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarContent"
+                aria-controls="navbarContent" aria-expanded="false" aria-label="Toggle navigation">
+            <span class="navbar-toggler-icon"></span>
+        </button>
+
+        <!-- Navbar links -->
+        <div class="collapse navbar-collapse" id="navbarContent">
+            <!-- Left side links -->
+            <ul class="navbar-nav me-auto mb-2 mb-lg-0">
+                {% if user.is_authenticated %}
+                <li class="nav-item">
+                    <a class="nav-link" href="{% url 'trips-page' %}">Trips</a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link" href="{% url 'my-bookings-page' %}">My Bookings</a>
+                </li>
+                {% endif %}
+            </ul>
+
+            <!-- Right side user info / auth buttons -->
+            <ul class="navbar-nav ms-auto mb-2 mb-lg-0 align-items-center">
+                {% if user.is_authenticated %}
+                <li class="nav-item me-2">
+                    <span class="nav-link fw-semibold">Hello, {{ user.username }}</span>
+                </li>
+                <li class="nav-item">
+                    <a class="btn btn-outline-danger btn-sm" href="{% url 'logout' %}">Logout</a>
+                </li>
+                {% else %}
+                <li class="nav-item me-2">
+                    <a class="btn btn-outline-primary btn-sm" href="{% url 'login' %}">Login</a>
+                </li>
+                <li class="nav-item">
+                    <a class="btn btn-primary btn-sm text-white" href="{% url 'register' %}">Register</a>
+                </li>
+                {% endif %}
+            </ul>
+        </div>
+    </div>
+</nav>

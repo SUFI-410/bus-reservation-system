@@ -1,0 +1,37 @@
+{% extends 'frontend/base.html' %}
+
+{% block title %}Payment | Bus Reservation System{% endblock %}
+
+{% block content %}
+<div class="container mt-5">
+    <h2 class="mb-4 text-center">Payment for Booking #{{ booking.id }}</h2>
+
+    <div class="card mx-auto" style="max-width: 500px;">
+        <div class="card-body">
+            <h5 class="card-title">
+                {{ booking.trip.bus.bus_number }} ({{ booking.trip.bus.type_of_bus }})
+            </h5>
+            <p class="card-text">
+                Route: {{ booking.trip.route.location_from }} → {{ booking.trip.route.location_to }}<br>
+                Seat: {{ booking.seat_number }}<br>
+                Departure: {{ booking.trip.departure_time|date:"Y-m-d H:i" }}<br>
+                Arrival: {{ booking.trip.arrival_time|date:"Y-m-d H:i" }}<br>
+                Price: Rs. {{ booking.trip.price }}
+            </p>
+
+            {% if booking.payment_status == 'paid' %}
+            <div class="alert alert-success text-center">
+                ✅ Payment completed for this booking.
+            </div>
+            <a href="{% url 'my-bookings-page' %}" class="btn btn-primary w-100">Back to My Bookings</a>
+            {% else %}
+            <form method="post">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-success w-100">Pay Now</button>
+            </form>
+            <a href="{% url 'my-bookings-page' %}" class="btn btn-secondary w-100 mt-2">Cancel/Go Back</a>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,42 @@
+{% extends 'frontend/base.html' %}
+{% load static %}
+
+{% block title %}Welcome | Bus Reservation System{% endblock %}
+
+{% block content %}
+<div class="container py-5">
+    <div class="row align-items-center">
+
+        <div class="col-md-6 text-center text-md-start">
+            <h1 class="display-5 fw-bold mb-3">
+                Book Your Bus Tickets Easily 🚍
+            </h1>
+
+            <p class="lead mb-4">
+                Search routes, select seats, and manage your bookings — all in one place.
+            </p>
+
+            <div class="d-flex flex-wrap gap-2">
+                <a href="{% url 'trips-page' %}" class="btn btn-primary btn-lg">
+                    View Trips
+                </a>
+
+                <a href="{% url 'login' %}" class="btn btn-outline-success btn-lg">
+                    Login
+                </a>
+
+                <a href="{% url 'register' %}" class="btn btn-outline-info btn-lg">
+                    Register
+                </a>
+            </div>
+        </div>
+
+        <div class="col-md-6 text-center mt-4 mt-md-0">
+            <img src="{% static 'frontend/images/bus_hero.jpg' %}"
+                 class="img-fluid rounded shadow"
+                 alt="Bus Reservation">
+        </div>
+
+    </div>
+</div>
+{% endblock %}

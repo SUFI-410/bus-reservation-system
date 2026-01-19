@@ -1,0 +1,72 @@
+{% extends 'frontend/base.html' %}
+
+{% block title %}Book Seat | Bus Reservation System{% endblock %}
+
+{% block content %}
+<div class="container mt-5">
+
+    <h2 class="mb-3 text-center">
+        Booking for {{ trip.bus.bus_number }} ({{ trip.bus.type_of_bus }})
+    </h2>
+
+    <p class="text-center">
+        <strong>Route:</strong> {{ trip.route.location_from }} → {{ trip.route.location_to }}<br>
+        <strong>Departure:</strong> {{ trip.departure_time|date:"Y-m-d H:i" }} |
+        <strong>Arrival:</strong> {{ trip.arrival_time|date:"Y-m-d H:i" }}
+    </p>
+
+    <!-- Legend -->
+    <div class="d-flex justify-content-center gap-3 mb-3">
+        <span class="badge bg-success">Available</span>
+        <span class="badge bg-danger">Booked</span>
+        <span class="badge bg-primary">Selected</span>
+    </div>
+
+    <form method="post">
+        {% csrf_token %}
+
+        <div class="row justify-content-center">
+            <div class="col-10 text-center">
+
+                <div class="d-flex flex-wrap justify-content-center gap-2">
+
+                    {% for seat in seats %}
+
+                    {% if seat.booked %}
+                    <button type="button"
+                            class="btn btn-sm btn-danger"
+                            disabled
+                            style="width:45px;">
+                        {{ seat.number }}
+                    </button>
+                    {% else %}
+                    <input type="radio"
+                           class="btn-check"
+                           name="seat_number"
+                           id="seat{{ seat.number }}"
+                           value="{{ seat.number }}"
+                           autocomplete="off">
+
+                    <label class="btn btn-sm btn-outline-success"
+                           for="seat{{ seat.number }}"
+                           style="width:45px;">
+                        {{ seat.number }}
+                    </label>
+                    {% endif %}
+
+                    {% endfor %}
+
+                </div>
+
+            </div>
+        </div>
+
+        <div class="text-center mt-4">
+            <button type="submit" class="btn btn-primary px-4">Reserve Seat</button>
+            <a href="{% url 'trips-page' %}" class="btn btn-secondary px-4">Back</a>
+        </div>
+
+    </form>
+
+</div>
+{% endblock %}
