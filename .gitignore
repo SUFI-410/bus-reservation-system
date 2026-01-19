@@ -1,0 +1,68 @@
+# -----------------------------
+# Python
+# -----------------------------
+*.pyc
+*.pyo
+*.pyd
+__pycache__/
+*.swp
+*.swo
+
+# -----------------------------
+# Virtual Environment
+# -----------------------------
+.venv/
+env/
+venv/
+
+# -----------------------------
+# Django
+# -----------------------------
+*.log
+local_settings.py
+media/
+staticfiles/
+
+# -----------------------------
+# Django Migrations (optional)
+# -----------------------------
+# bus_app/migrations/
+# frontend/migrations/
+
+# -----------------------------
+# Environment Variables
+# -----------------------------
+.env
+
+# -----------------------------
+# IDEs / Editors
+# -----------------------------
+.idea/          # PyCharm
+.vscode/        # VSCode
+
+# -----------------------------
+# Operating System files
+# -----------------------------
+.DS_Store
+Thumbs.db
+
+# -----------------------------
+# Database
+# -----------------------------
+# PostgreSQL doesn't create local files, ignore SQLite files if ever used
+# *.sqlite3
+# db.sqlite3
+
+# -----------------------------
+# Testing / Coverage
+# -----------------------------
+.coverage
+htmlcov/
+.tox/
+.pytest_cache/
+
+# -----------------------------
+# Misc
+# -----------------------------
+*.bak
+*.orig
