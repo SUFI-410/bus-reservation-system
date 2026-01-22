@@ -4,7 +4,14 @@ from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
+from django.db import transaction
+from django.db.models import Q
+from datetime import timedelta
 from bus_app.models import Booking, Trip
+from bus_app.utils import filter_trips, sort_trips
+
+# Hold time for pending bookings (before payment) in minutes
+HOLD_TIME_MINUTES = 5
 
 
 def welcome_page(request):
@@ -19,40 +26,29 @@ def welcome_page(request):
 
 @login_required
 def trips_page(request):
-    """
-    Main Trips Listing Page
-    Allows filtering by from/to cities
-    Only future active trips shown
-    """
+    trips = Trip.objects.filter(is_active=True, departure_time__gte=timezone.now())
+
     from_city = request.GET.get("from_city")
     to_city = request.GET.get("to_city")
+    search = request.GET.get("search")
+    sort = request.GET.get("sort")  # e.g., "price", "-departure_time"
 
-    trips = Trip.objects.filter(
-        is_active=True,
-        departure_time__gte=timezone.now()
-    )
+    trips = filter_trips(trips, from_city, to_city, search)
+    trips = sort_trips(trips, sort if sort else "departure_time")
 
-    if from_city:
-        trips = trips.filter(route__location_from=from_city)
-
-    if to_city:
-        trips = trips.filter(route__location_to=to_city)
-
-    from_cities = Trip.objects.values_list("route__location_from", flat=True).distinct()
-    to_cities = Trip.objects.values_list("route__location_to", flat=True).distinct()
-
+    # calculate available seats
     for trip in trips:
         trip.available_seats = trip.available_seats()
 
-    context = {
+    return render(request, "frontend/home.html", {
         "trips": trips,
-        "from_cities": from_cities,
-        "to_cities": to_cities,
+        "from_cities": Trip.objects.values_list("route__location_from", flat=True).distinct(),
+        "to_cities": Trip.objects.values_list("route__location_to", flat=True).distinct(),
         "selected_from": from_city,
         "selected_to": to_city,
-    }
-
-    return render(request, "frontend/home.html", context)
+        "selected_search": search,
+        "selected_sort": sort,
+    })
 
 
 def login_page(request):
@@ -100,8 +96,8 @@ def logout_page(request):
 @login_required
 def booking_page(request, trip_id):
     """
-    Seat booking page for a specific trip
-    Prevent booking after departure
+    Seat booking page for a specific trip.
+    Implements temporary seat hold for pending bookings.
     """
     trip = get_object_or_404(Trip, id=trip_id)
 
@@ -110,12 +106,19 @@ def booking_page(request, trip_id):
         messages.error(request, "This trip has already departed. Booking closed.")
         return redirect("trips-page")
 
+    # Release expired pending bookings
+    Booking.objects.filter(
+        trip=trip,
+        is_confirmed=False,
+        payment_status="pending",
+        hold_expires_at__lt=timezone.now()
+    ).delete()
+
     booked_seats = trip.booked_seats()
     available_seats = trip.available_seats()
 
     if request.method == "POST":
         seat_number = request.POST.get("seat_number")
-
         if not seat_number:
             messages.error(request, "Please select a seat")
             return redirect("booking-page", trip_id=trip.id)  # noqa
@@ -123,18 +126,26 @@ def booking_page(request, trip_id):
         seat_number = int(seat_number)
 
         if seat_number not in available_seats:
-            messages.error(request, f"Seat {seat_number} is already booked!")
+            messages.error(request, f"Seat {seat_number} is already booked or on hold!")
             return redirect("booking-page", trip_id=trip.id)  # noqa
 
-        booking = Booking.objects.create(
-            user=request.user,
-            trip=trip,
-            seat_number=seat_number,
-            is_confirmed=False,
-            payment_status="pending",
-        )
+        try:
+            with transaction.atomic():
+                # Lock seat to prevent race conditions
+                booking = Booking.objects.create(
+                    user=request.user,
+                    trip=trip,
+                    seat_number=seat_number,
+                    is_confirmed=False,
+                    payment_status="pending",
+                    hold_expires_at=timezone.now() + timedelta(minutes=HOLD_TIME_MINUTES)
+                )
+        except Exception:  # noqa
+            messages.error(request, f"Seat {seat_number} could not be reserved. Try again.")
+            return redirect("booking-page", trip_id=trip.id)  # noqa
 
-        messages.success(request, f"Seat {seat_number} reserved! Please complete payment.")
+        messages.success(request,
+                         f"Seat {seat_number} reserved! Please complete payment within {HOLD_TIME_MINUTES} minutes.")
         return redirect("payment-page", booking_id=booking.id)  # noqa
 
     total_seats = trip.bus.capacity
@@ -159,9 +170,16 @@ def payment_page(request, booking_id):
         return redirect("my-bookings-page")
 
     if request.method == "POST":
-        booking.payment_status = "paid"
-        booking.is_confirmed = True
-        booking.save()
+        try:
+            with transaction.atomic():
+                booking.payment_status = "paid"
+                booking.is_confirmed = True
+                booking.hold_expires_at = None
+                booking.save()
+        except Exception as e:
+            messages.error(request, f"Payment failed: {str(e)}")
+            return redirect("payment-page", booking_id=booking.id)  # noqa
+
         messages.success(request, f"Payment successful! Seat {booking.seat_number} confirmed ✅")
         return redirect("my-bookings-page")
 
@@ -172,12 +190,26 @@ def payment_page(request, booking_id):
 
 @login_required
 def my_bookings_page(request):
-    bookings = (
-        Booking.objects
-        .filter(user=request.user)
-        .select_related("trip", "trip__bus", "trip__route")
-        .order_by("-created_at")
-    )
+    q = request.GET.get("q")
+    status = request.GET.get("status")
+    sort_by = request.GET.get("sort", "-created_at")  # default: newest first
+
+    bookings = Booking.objects.filter(user=request.user).select_related("trip", "trip__bus", "trip__route")
+
+    if q:
+        bookings = bookings.filter(
+            Q(seat_number__icontains=q) |
+            Q(trip__bus__bus_number__icontains=q) |
+            Q(trip__route__route_name__icontains=q)
+        )
+
+    if status:
+        if status == "confirmed":
+            bookings = bookings.filter(is_confirmed=True, is_cancelled=False)
+        elif status == "cancelled":
+            bookings = bookings.filter(is_cancelled=True)
+
+    bookings = bookings.order_by(sort_by)
 
     return render(request, "frontend/my_bookings.html", {
         "bookings": bookings,
@@ -188,24 +220,33 @@ def my_bookings_page(request):
 @login_required
 def cancel_booking_page(request, booking_id):
     """
-    Cancel booking + refund logic
+    Booking cancellation:
+    - Marks booking as cancelled
+    - Refunds payment if already paid
+    - Atomic transaction for database safety
     """
     booking = get_object_or_404(Booking, id=booking_id, user=request.user)
 
     if booking.is_cancelled:
-        messages.info(request, "Booking already cancelled.")
+        messages.info(request, "This booking has already been cancelled.")
         return redirect("my-bookings-page")
 
-    booking.is_cancelled = True
-    booking.is_confirmed = False
+    try:
+        with transaction.atomic():
+            booking.is_cancelled = True
+            booking.is_confirmed = False
 
-    # ✅ Refund logic (simple status)
-    if booking.payment_status == "paid":
-        booking.payment_status = "refunded"
-        messages.success(request, "Booking cancelled. Refund will be processed.")
-    else:
-        booking.payment_status = "failed"
-        messages.success(request, "Booking cancelled.")
+            if booking.payment_status == "paid":
+                booking.payment_status = "refunded"
+                messages.success(request,
+                                 f"Booking for seat {booking.seat_number} has been cancelled. Refund will be processed.")
+            else:
+                messages.success(request, f"Booking for seat {booking.seat_number} has been cancelled.")
 
-    booking.save()
-    return redirect("my-bookings-page")
+            booking.save()
+    except Exception as e:
+        messages.error(request, f"Failed to cancel booking: {str(e)}")
+        return redirect("my-bookings-page")
+
+    # ✅ Redirect to booking page so seats are recalculated
+    return redirect("booking-page", trip_id=booking.trip.id)

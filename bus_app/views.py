@@ -44,7 +44,6 @@ def api_root(request, format=None):  # noqa
             "trips": reverse("api-trips", request=request, format=format),
             "book": reverse("api-book", request=request, format=format),
             "my_bookings": reverse("api-my-bookings", request=request, format=format),
-            "cancel_booking": reverse("api-cancel-booking", request=request, format=format),
         }
     })
 
@@ -115,8 +114,8 @@ class CreateBookingAPIView(APIView):
 
         return Response({
             "message": "Seat reserved. Please complete payment.",
-            "booking_id": booking.id, # noqa
-            "payment_url": f"/api/bookings/{booking.id}/pay/" # noqa
+            "booking_id": booking.id,  # noqa
+            "payment_url": f"/api/bookings/{booking.id}/pay/"  # noqa
         }, status=status.HTTP_201_CREATED)
 
 

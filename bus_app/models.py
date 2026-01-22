@@ -76,7 +76,6 @@ class Trip(models.Model):
     def clean(self):
         if self.arrival_time <= self.departure_time:
             raise ValidationError("Arrival time must be after departure time.")
-
         if self.departure_time < timezone.now():
             raise ValidationError("Departure time cannot be in the past.")
 
@@ -85,9 +84,22 @@ class Trip(models.Model):
         super().save(*args, **kwargs)
 
     def booked_seats(self):
-        return list(self.bookings.values_list("seat_number", flat=True))  # noqa
+        """
+        Return all confirmed or pending seats that are not expired.
+        """
+        now = timezone.now()
+        bookings = self.bookings.filter(is_cancelled=False).exclude(  # noqa
+            payment_status__in=["refunded", "failed"]
+        ).filter(
+            models.Q(is_confirmed=True) |
+            models.Q(payment_status="pending", hold_expires_at__gt=now)
+        )
+        return list(bookings.values_list("seat_number", flat=True))
 
     def available_seats(self):
+        """
+        Returns available seat numbers (ignores expired holds)
+        """
         booked = set(self.booked_seats())
         return [
             seat for seat in range(1, self.bus.capacity + 1)
@@ -121,34 +133,50 @@ class Booking(models.Model):
             ("pending", "Pending"),
             ("paid", "Paid"),
             ("failed", "Failed"),
+            ("refunded", "Refunded"),
         ],
         default="pending",
     )
+
+    # Hold expires after X minutes if payment not completed
+    hold_expires_at = models.DateTimeField(null=True, blank=True)
 
     booking_time = models.DateTimeField(auto_now_add=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     def clean(self):
+        now = timezone.now()
+
         # Cannot book cancelled trip
-        if self.trip.status == "cancelled":
+        if self.trip.status == "cancelled" and not self.is_cancelled:
             raise ValidationError("This trip has been cancelled.")
 
         # Seat capacity validation
         if self.seat_number > self.trip.bus.capacity:
             raise ValidationError("Seat number exceeds bus capacity.")
 
-        # Prevent duplicate seat booking
-        if (
-                Booking.objects
-                        .filter(trip=self.trip, seat_number=self.seat_number)
-                        .exclude(pk=self.pk)
-                        .exists()
-        ):
-            raise ValidationError("This seat is already booked for this trip.")
+        # Prevent duplicate seat booking (ignore expired holds)
+        conflict_qs = Booking.objects.filter(
+            trip=self.trip,
+            seat_number=self.seat_number,
+            is_cancelled=False
+        ).exclude(pk=self.pk)
+
+        for b in conflict_qs:
+            if b.is_confirmed or (b.payment_status == "pending" and b.hold_expires_at and b.hold_expires_at > now):
+                raise ValidationError("This seat is already booked for this trip.")
 
         # Prevent overbooking
-        if Booking.objects.filter(trip=self.trip).count() >= self.trip.bus.capacity:
+        active_bookings_count = Booking.objects.filter(
+            trip=self.trip,
+            is_cancelled=False
+        ).filter(
+            models.Q(is_confirmed=True) |
+            models.Q(payment_status="pending", hold_expires_at__gt=now)
+        ).count()
+
+        if not self.is_cancelled and active_bookings_count >= self.trip.bus.capacity:
             raise ValidationError("This trip is fully booked.")
 
     def save(self, *args, **kwargs):
@@ -162,8 +190,10 @@ class Booking(models.Model):
         constraints = [
             models.UniqueConstraint(
                 fields=["trip", "seat_number"],
-                name="unique_seat_per_trip"
+                condition=models.Q(is_cancelled=False),
+                name="unique_active_seat_per_trip"
             )
         ]
-        verbose_name = "Booking"
-        verbose_name_plural = "Bookings"
+
+    verbose_name = "Booking"
+    verbose_name_plural = "Bookings"
