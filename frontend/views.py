@@ -6,19 +6,17 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from django.db import transaction
 from django.db.models import Q
+from django.core.paginator import Paginator
 from datetime import timedelta
 from bus_app.models import Booking, Trip
-from bus_app.utils import filter_trips, sort_trips
+from bus_app.utils import filter_trips
 
 # Hold time for pending bookings (before payment) in minutes
 HOLD_TIME_MINUTES = 5
 
 
 def welcome_page(request):
-    """
-    Landing page. Shows system info and Login/Register buttons.
-    Redirects logged-in users to trips page.
-    """
+    """Landing page. Redirect logged-in users to trips page."""
     if request.user.is_authenticated:
         return redirect("trips-page")
     return render(request, "frontend/welcome.html")
@@ -26,29 +24,49 @@ def welcome_page(request):
 
 @login_required
 def trips_page(request):
-    trips = Trip.objects.filter(is_active=True, departure_time__gte=timezone.now())
+    trips_qs = Trip.objects.filter(
+        is_active=True,
+        departure_time__gte=timezone.now()
+    )
 
+    # Get filter/search/sort from GET parameters
     from_city = request.GET.get("from_city")
     to_city = request.GET.get("to_city")
     search = request.GET.get("search")
-    sort = request.GET.get("sort")  # e.g., "price", "-departure_time"
+    sort = request.GET.get("sort", "departure_time")  # default: ascending by departure_time
 
-    trips = filter_trips(trips, from_city, to_city, search)
-    trips = sort_trips(trips, sort if sort else "departure_time")
+    # Filter trips
+    trips_qs = filter_trips(trips_qs, from_city, to_city, search)
 
-    # calculate available seats
-    for trip in trips:
-        trip.available_seats = trip.available_seats()
+    # Validate sort field
+    allowed_sort_fields = ["departure_time", "-departure_time", "price", "-price"]
+    if sort not in allowed_sort_fields:
+        sort = "departure_time"
 
-    return render(request, "frontend/home.html", {
-        "trips": trips,
+    trips_qs = trips_qs.order_by(sort)
+
+    # Pagination: 10 trips per page
+    paginator = Paginator(trips_qs, 10)
+    page_number = request.GET.get("page")
+    trips_page_obj = paginator.get_page(page_number)
+
+    # Calculate available seats for trips on this page
+    for trip in trips_page_obj:
+        trip.available_seats_list = trip.available_seats()
+
+    # Pass all required data to template
+    context = {
+        "trips": trips_page_obj,
+        "page_obj": trips_page_obj,
         "from_cities": Trip.objects.values_list("route__location_from", flat=True).distinct(),
         "to_cities": Trip.objects.values_list("route__location_to", flat=True).distinct(),
         "selected_from": from_city,
         "selected_to": to_city,
         "selected_search": search,
         "selected_sort": sort,
-    })
+    }
+
+    return render(request, "frontend/home.html", context)
 
 
 def login_page(request):
@@ -190,26 +208,39 @@ def payment_page(request, booking_id):
 
 @login_required
 def my_bookings_page(request):
+    """
+    Show user bookings with optional search, filter, sort, and pagination (10 per page)
+    """
     q = request.GET.get("q")
     status = request.GET.get("status")
-    sort_by = request.GET.get("sort", "-created_at")  # default: newest first
+    sort_by = request.GET.get("sort", "created_at")
 
-    bookings = Booking.objects.filter(user=request.user).select_related("trip", "trip__bus", "trip__route")
+    bookings_list = Booking.objects.filter(user=request.user).select_related(
+        "trip", "trip__bus", "trip__route"
+    )
 
+    # Search
     if q:
-        bookings = bookings.filter(
+        bookings_list = bookings_list.filter(
             Q(seat_number__icontains=q) |
             Q(trip__bus__bus_number__icontains=q) |
             Q(trip__route__route_name__icontains=q)
         )
 
+    # Filter by status
     if status:
         if status == "confirmed":
-            bookings = bookings.filter(is_confirmed=True, is_cancelled=False)
+            bookings_list = bookings_list.filter(is_confirmed=True, is_cancelled=False)
         elif status == "cancelled":
-            bookings = bookings.filter(is_cancelled=True)
+            bookings_list = bookings_list.filter(is_cancelled=True)
 
-    bookings = bookings.order_by(sort_by)
+    # Sorting
+    bookings_list = bookings_list.order_by(sort_by)
+
+    # Pagination: 10 bookings per page
+    paginator = Paginator(bookings_list, 10)
+    page_number = request.GET.get("page")
+    bookings = paginator.get_page(page_number)
 
     return render(request, "frontend/my_bookings.html", {
         "bookings": bookings,
@@ -248,5 +279,5 @@ def cancel_booking_page(request, booking_id):
         messages.error(request, f"Failed to cancel booking: {str(e)}")
         return redirect("my-bookings-page")
 
-    # ✅ Redirect to booking page so seats are recalculated
-    return redirect("booking-page", trip_id=booking.trip.id)
+    # ✅ Redirect to my bookings so seats are recalculated
+    return redirect("my-bookings-page")

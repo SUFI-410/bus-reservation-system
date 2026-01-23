@@ -17,9 +17,9 @@
     </p>
     {% endif %}
 
-    <!-- SEARCH FORM -->
+    <!-- SEARCH + FILTER + SORT FORM -->
     <form method="get" class="row g-3 mb-5 justify-content-center">
-        <div class="col-md-4">
+        <div class="col-md-3">
             <label class="form-label">From</label>
             <select name="from_city" class="form-select">
                 <option value="">Select city</option>
@@ -28,7 +28,8 @@
                 {% endfor %}
             </select>
         </div>
-        <div class="col-md-4">
+
+        <div class="col-md-3">
             <label class="form-label">To</label>
             <select name="to_city" class="form-select">
                 <option value="">Select city</option>
@@ -37,6 +38,17 @@
                 {% endfor %}
             </select>
         </div>
+
+        <div class="col-md-3">
+            <label class="form-label">Sort By</label>
+            <select name="sort" class="form-select">
+                <option value="departure_time" {% if selected_sort == "departure_time" %}selected{% endif %}>Departure Time ↑</option>
+                <option value="-departure_time" {% if selected_sort == "-departure_time" %}selected{% endif %}>Departure Time ↓</option>
+                <option value="price" {% if selected_sort == "price" %}selected{% endif %}>Price ↑</option>
+                <option value="-price" {% if selected_sort == "-price" %}selected{% endif %}>Price ↓</option>
+            </select>
+        </div>
+
         <div class="col-md-2 d-flex align-items-end">
             <button type="submit" class="btn btn-primary w-100">Search</button>
         </div>
@@ -52,6 +64,7 @@
                         <h5 class="card-title fw-bold">
                             {{ trip.bus.bus_number }} ({{ trip.bus.type_of_bus }})
                         </h5>
+
                         <p class="card-text mb-1">
                             <strong>{{ trip.route.location_from }}</strong> →
                             <strong>{{ trip.route.location_to }}</strong><br>
@@ -59,12 +72,15 @@
                             Arrival: {{ trip.arrival_time|date:"Y-m-d H:i" }}<br>
                             Price: <strong>Rs. {{ trip.price }}</strong>
                         </p>
+
                         <p class="mt-2 mb-0">
-                            Available Seats: <span class="fw-bold">{{ trip.available_seats|length }}</span> / {{
-                            trip.bus.capacity }}
+                            Available Seats:
+                            <span class="fw-bold">{{ trip.available_seats_list|length }}</span>
+                            / {{ trip.bus.capacity }}
                         </p>
                     </div>
-                    {% if trip.available_seats %}
+
+                    {% if trip.available_seats_list %}
                     <a href="{% url 'booking-page' trip.id %}" class="btn btn-success mt-3">Book Now</a>
                     {% else %}
                     <button class="btn btn-secondary mt-3" disabled>Fully Booked</button>
@@ -74,6 +90,52 @@
         </div>
         {% endfor %}
     </div>
+
+    <!-- PAGINATION -->
+    {% if trips.paginator.num_pages > 1 %}
+    <nav aria-label="Trips pagination" class="mt-4">
+        <ul class="pagination justify-content-center">
+
+            {% if trips.has_previous %}
+            <li class="page-item">
+                <a class="page-link"
+                   href="?{% if selected_from %}from_city={{ selected_from }}&{% endif %}
+                          {% if selected_to %}to_city={{ selected_to }}&{% endif %}
+                          {% if selected_search %}search={{ selected_search }}&{% endif %}
+                          {% if selected_sort %}sort={{ selected_sort }}&{% endif %}
+                          page={{ trips.previous_page_number }}">
+                    Previous
+                </a>
+            </li>
+            {% else %}
+            <li class="page-item disabled"><span class="page-link">Previous</span></li>
+            {% endif %}
+
+            <li class="page-item disabled">
+                <span class="page-link">
+                    Page {{ trips.number }} of {{ trips.paginator.num_pages }}
+                </span>
+            </li>
+
+            {% if trips.has_next %}
+            <li class="page-item">
+                <a class="page-link"
+                   href="?{% if selected_from %}from_city={{ selected_from }}&{% endif %}
+                          {% if selected_to %}to_city={{ selected_to }}&{% endif %}
+                          {% if selected_search %}search={{ selected_search }}&{% endif %}
+                          {% if selected_sort %}sort={{ selected_sort }}&{% endif %}
+                          page={{ trips.next_page_number }}">
+                    Next
+                </a>
+            </li>
+            {% else %}
+            <li class="page-item disabled"><span class="page-link">Next</span></li>
+            {% endif %}
+
+        </ul>
+    </nav>
+    {% endif %}
+
     {% else %}
     <div class="alert alert-info text-center">
         No trips available at the moment.

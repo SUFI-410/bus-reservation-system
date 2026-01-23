@@ -26,44 +26,42 @@
             <tbody>
             {% for booking in bookings %}
             <tr>
-                <td>{{ forloop.counter }}</td>
-                <td>{{ booking.trip.bus.bus_number }}<br><small class="text-muted">{{ booking.trip.bus.type_of_bus
-                    }}</small></td>
+                <td>{{ forloop.counter0|add:bookings.start_index|default:forloop.counter }}</td>
+                <td>{{ booking.trip.bus.bus_number }}<br><small class="text-muted">{{ booking.trip.bus.type_of_bus }}</small></td>
                 <td>{{ booking.trip.route.location_from }} → {{ booking.trip.route.location_to }}</td>
                 <td><strong>{{ booking.seat_number }}</strong></td>
                 <td>
                     {% if booking.is_cancelled %}
-                    <span class="badge bg-danger">Cancelled</span>
+                        <span class="badge bg-danger">Cancelled</span>
                     {% elif booking.is_confirmed %}
-                    <span class="badge bg-success">Confirmed</span>
+                        <span class="badge bg-success">Confirmed</span>
                     {% else %}
-                    <span class="badge bg-warning text-dark">Pending</span>
+                        <span class="badge bg-warning text-dark">Pending</span>
                     {% endif %}
                 </td>
                 <td>
                     {% if booking.payment_status == 'paid' %}
-                    <span class="badge bg-success">Paid</span>
+                        <span class="badge bg-success">Paid</span>
                     {% elif booking.payment_status == 'pending' %}
-                    <span class="badge bg-warning text-dark">Pending</span>
+                        <span class="badge bg-warning text-dark">Pending</span>
                     {% elif booking.payment_status == 'refunded' %}
-                    <span class="badge bg-info">Refunded</span>
+                        <span class="badge bg-info">Refunded</span>
                     {% else %}
-                    <span class="badge bg-danger">Failed</span>
+                        <span class="badge bg-danger">Failed</span>
                     {% endif %}
                 </td>
                 <td>{{ booking.trip.departure_time|date:"Y-m-d H:i" }}</td>
                 <td>{{ booking.trip.arrival_time|date:"Y-m-d H:i" }}</td>
                 <td>{{ booking.trip.price }}</td>
                 <td>
-                    {% if booking.payment_status == 'pending' and not booking.is_cancelled and
-                    booking.trip.departure_time > now %}
-                    <a href="{% url 'payment-page' booking.id %}" class="btn btn-sm btn-primary mb-1">Pay Now</a>
+                    {% if booking.payment_status == 'pending' and not booking.is_cancelled and booking.trip.departure_time > now %}
+                        <a href="{% url 'payment-page' booking.id %}" class="btn btn-sm btn-primary mb-1">Pay Now</a>
                     {% endif %}
                     {% if not booking.is_cancelled and booking.trip.departure_time > now %}
-                    <a href="{% url 'cancel-booking-page' booking.id %}" class="btn btn-sm btn-danger mb-1">Cancel</a>
+                        <a href="{% url 'cancel-booking-page' booking.id %}" class="btn btn-sm btn-danger mb-1">Cancel</a>
                     {% endif %}
                     {% if booking.trip.departure_time <= now %}
-                    <span class="badge bg-secondary">Trip Passed</span>
+                        <span class="badge bg-secondary">Trip Passed</span>
                     {% endif %}
                 </td>
             </tr>
@@ -71,6 +69,38 @@
             </tbody>
         </table>
     </div>
+
+    <!-- Pagination -->
+    {% if bookings.has_other_pages %}
+    <nav aria-label="Page navigation" class="mt-4">
+        <ul class="pagination justify-content-center">
+            {% if bookings.has_previous %}
+            <li class="page-item">
+                <a class="page-link" href="?page={{ bookings.previous_page_number }}" aria-label="Previous">&laquo;</a>
+            </li>
+            {% else %}
+            <li class="page-item disabled"><span class="page-link">&laquo;</span></li>
+            {% endif %}
+
+            {% for num in bookings.paginator.page_range %}
+                {% if bookings.number == num %}
+                    <li class="page-item active"><span class="page-link">{{ num }}</span></li>
+                {% elif num >= bookings.number|add:"-2" and num <= bookings.number|add:"2" %}
+                    <li class="page-item"><a class="page-link" href="?page={{ num }}">{{ num }}</a></li>
+                {% endif %}
+            {% endfor %}
+
+            {% if bookings.has_next %}
+            <li class="page-item">
+                <a class="page-link" href="?page={{ bookings.next_page_number }}" aria-label="Next">&raquo;</a>
+            </li>
+            {% else %}
+            <li class="page-item disabled"><span class="page-link">&raquo;</span></li>
+            {% endif %}
+        </ul>
+    </nav>
+    {% endif %}
+
     {% else %}
     <div class="alert alert-info text-center">
         <h5>No bookings yet 😔</h5>
